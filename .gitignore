@@ -22,16 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Models
-*.glb
-*.hdr
-
-# Music
-*.mp3
-
-# Images
-*.png
-
-# Videos
-*.mp4
