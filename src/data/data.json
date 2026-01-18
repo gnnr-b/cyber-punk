@@ -29,19 +29,19 @@
   "0010.png": {
     "haiku": "Fogged glass entryway\nInside and outside dissolve\nHere is not yet there"
   },
-  "scene01.glb": {
+  "chains.glb": {
     "haiku": "Unloaded platform\nTracks stretch past the final sign\nArrival pauses"
   },
-  "scene02.glb": {
+  "ghost.glb": {
     "haiku": "Ceiling lights blink once\nPower waits for someone else\nRoom holds its shape still"
   },
-  "scene03.glb": {
+  "hooded.glb": {
     "haiku": "Empty lobby clock\nMinute hand refuses time\nNow repeats itself"
   },
-  "scene04.glb": {
+  "lantern.glb": {
     "haiku": "Parking lot at dawn\nLines promise order and rest\nNothing chooses yet"
   },
-  "scene05.glb": {
+  "maiden.glb": {
     "haiku": "Bare room, white and quiet\nCorners watch the open door\nPurpose not assigned"
   }
 }
