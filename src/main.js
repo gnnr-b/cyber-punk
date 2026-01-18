@@ -45,18 +45,12 @@ new HDRLoader()
 
 // Load image textures and video texture
 const texLoader = new THREE.TextureLoader()
-const imagePaths = [
-  new URL('./assets/img/0001.png', import.meta.url).href,
-  new URL('./assets/img/0002.png', import.meta.url).href,
-  new URL('./assets/img/0003.png', import.meta.url).href,
-  new URL('./assets/img/0004.png', import.meta.url).href,
-  new URL('./assets/img/0005.png', import.meta.url).href,
-  new URL('./assets/img/0006.png', import.meta.url).href,
-  new URL('./assets/img/0007.png', import.meta.url).href,
-  new URL('./assets/img/0008.png', import.meta.url).href,
-  new URL('./assets/img/0009.png', import.meta.url).href,
-  new URL('./assets/img/0010.png', import.meta.url).href
-]
+
+// Dynamically import all images in assets/img so adding new images is automatic.
+// Vite exposes `import.meta.glob` which returns module objects with `default` URL when eager.
+const imageModules = import.meta.glob('./assets/img/*.{png,jpg,jpeg}', { eager: true })
+const imagePaths = Object.values(imageModules).map(m => (m && m.default) || m).filter(Boolean)
+
 let imageTextures = []
 
 // Load textures and only proceed once they're available to avoid marking
@@ -201,22 +195,21 @@ function makeBuilding(i, j, x, z, roadEvery, spacing) {
       materials.push(new THREE.MeshBasicMaterial({ color: 0x0f0f0f }))
       continue
     }
-
-    // choose an image (favor images) for each side face
-    if (Math.random() < 0.12) {
-      const vt = new THREE.VideoTexture(videoEl)
-      vt.encoding = THREE.sRGBEncoding
-      vt.minFilter = THREE.LinearFilter
-      vt.magFilter = THREE.LinearFilter
-      vt.format = THREE.RGBAFormat
-      materials.push(new THREE.MeshBasicMaterial({ map: vt, toneMapped: false, side: THREE.FrontSide }))
-    } else {
-      const src = imageTextures[Math.floor(Math.random() * imageTextures.length)]
-      const faceW = (fi === 0 || fi === 1) ? d : w
-      const faceH = h
-      const tex = makeTextureForFace(src, faceW, faceH)
-      materials.push(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.FrontSide }))
+    // Allow occasional video faces; otherwise use an image texture for
+    // each vertical face. If neither is available, fall back to dark.
+    if (Math.random() < 0.12 && videoTexture) {
+      materials.push(new THREE.MeshBasicMaterial({ map: videoTexture, toneMapped: false, side: THREE.FrontSide }))
+      continue
     }
+    if (!imageTextures.length) {
+      materials.push(new THREE.MeshBasicMaterial({ color: 0x0f0f0f }))
+      continue
+    }
+    const src = imageTextures[Math.floor(Math.random() * imageTextures.length)]
+    const faceW = (fi === 0 || fi === 1) ? d : w
+    const faceH = h
+    const tex = makeTextureForFace(src, faceW, faceH)
+    materials.push(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.FrontSide }))
   }
 
   const mesh = new THREE.Mesh(geom, materials)
@@ -288,9 +281,8 @@ texturesReady.then(() => {
     })
   }
 
-  modelFiles.forEach((p, idx) => {
+  modelFiles.forEach((p) => {
     gltfLoader.load(p, (g) => {
-      console.log('model loaded:', p)
       const root = g.scene || g.scenes[0]
       root.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true } })
       // create mesh wrapper function for placement
@@ -305,18 +297,12 @@ texturesReady.then(() => {
           if (!node.isMesh) return
           const holoMat = makeHoloMaterial()
           if (scene.environment) holoMat.envMap = scene.environment
-          // make the holographic material more aggressively visible for reliability
           holoMat.side = THREE.DoubleSide
-          holoMat.transparent = false
-          holoMat.opacity = 1.0
-          holoMat.emissiveIntensity = 0.8
           node.material = holoMat
           node.castShadow = true
           node.receiveShadow = true
           node.visible = true
           node.frustumCulled = false
-          node.renderOrder = 1
-          // ensure normals exist for proper lighting
           try { if (node.geometry && !node.geometry.attributes.normal) node.geometry.computeVertexNormals() } catch (e) {}
         })
 
@@ -339,84 +325,16 @@ texturesReady.then(() => {
         const lift = (minY < 0) ? -minY + 0.05 : 0.05
         clone.position.y = lift
 
-        // add a small axes helper to the model root for visibility
-        try {
-          const axes = new THREE.AxesHelper(Math.max(size.x, size.y, size.z) * 1.5 || 1.5)
-          clone.add(axes)
-        } catch (e) {}
-
         return clone
       }
       const placed = placeObjectNoOverlap(createFn)
       if (placed) {
-        // add a visible marker at the placed model to help locate it
-        try {
-          const markerMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00aaff, emissiveIntensity: 0.9 })
-          const marker = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 10), markerMat)
-          marker.position.copy(placed.position)
-          city.add(marker)
-          console.log('model placed at', placed.position.x.toFixed(1), placed.position.z.toFixed(1))
-        } catch (e) {}
-      } else {
-        // fallback: clone the loaded root, force-visible materials, normalize scale,
-        // and place directly in front of the camera so it's always visible for debugging.
-        try {
-          // compute distributed fallback position around a ring so models are spread out
-          const angle = (idx / modelFiles.length) * Math.PI * 2 + (Math.random() - 0.5) * 0.4
-          const radius = 8 + Math.random() * 18
-          const rx = Math.cos(angle) * radius
-          const rz = Math.sin(angle) * radius
-
-          const clone = root.clone()
-          // apply holographic material to fallback clone as well
-          clone.traverse((node) => {
-            if (!node.isMesh) return
-            const holoMat = makeHoloMaterial()
-            if (scene.environment) holoMat.envMap = scene.environment
-            holoMat.side = THREE.DoubleSide
-            holoMat.transparent = false
-            holoMat.opacity = 1.0
-            holoMat.emissiveIntensity = 0.9
-            node.material = holoMat
-            node.castShadow = true
-            node.receiveShadow = true
-            node.visible = true
-            node.frustumCulled = false
-            node.renderOrder = 1
-            try { if (node.geometry && !node.geometry.attributes.normal) node.geometry.computeVertexNormals() } catch (e) {}
-          })
-
-          // apply a reasonable scale relative to its bbox
-          const tmpBox = new THREE.Box3().setFromObject(clone)
-          const tmpSize = new THREE.Vector3()
-          tmpBox.getSize(tmpSize)
-          const maxDim = Math.max(tmpSize.x, tmpSize.y, tmpSize.z, 0.0001)
-          const target = 3.5
-          const norm = THREE.MathUtils.clamp(target / maxDim, 0.4, 5.0)
-          clone.scale.setScalar(norm)
-
-          // set position and lift to rest on ground
-          clone.position.set(rx, 0, rz)
-          const bbox2 = new THREE.Box3().setFromObject(clone)
-          const minY = bbox2.min.y
-          const lift = (minY < 0) ? -minY + 0.05 : 0.05
-          clone.position.y = lift
-
-          city.add(clone)
-          // register its bbox so future placement avoids overlap
-          const placedBox = new THREE.Box3().setFromObject(clone)
-          placedBox.expandByScalar(0.6)
-          buildingBoxes.push(placedBox)
-          console.warn('distributed fallback placed for', p, 'at', rx.toFixed(1), rz.toFixed(1))
-
-          // add helpers for visibility
-          city.add(new THREE.Box3Helper(placedBox, 0xff00ff))
-          clone.add(new THREE.AxesHelper(Math.max(tmpSize.x, tmpSize.y, tmpSize.z) * 0.6 || 1))
-        } catch (e) {
-          console.error('fallback placement failed for', p, e)
-        }
+        // register its bbox so future placement avoids overlap
+        const placedBox = new THREE.Box3().setFromObject(placed)
+        placedBox.expandByScalar(0.6)
+        buildingBoxes.push(placedBox)
       }
-    }, undefined, (err) => console.warn('model load failed', p, err))
+    }, undefined, () => {})
   })
 
   // scatter uniform cubes (panels) randomly like gallery pedestals/walls
@@ -430,13 +348,19 @@ texturesReady.then(() => {
       const materials = []
       for (let fi = 0; fi < 6; fi++) materials.push(baseMat)
       if (imageTextures.length) {
-        const src = imageTextures[Math.floor(Math.random() * imageTextures.length)]
-        const faceW = panelSize
+        // Put images on all four vertical sides (0,1,4,5). Each side can be different.
         const faceH = panelSize
-        const tex = makeTextureForFace(src, faceW, faceH)
-        // put image on a random side
-        const sideIdx = [0,1,4,5][Math.floor(Math.random()*4)]
-        materials[sideIdx] = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.0, roughness: 0.35, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6 })
+        for (const fi of [0, 1, 4, 5]) {
+          // small chance to use the shared video texture for a face
+          if (Math.random() < 0.12 && videoTexture) {
+            materials[fi] = new THREE.MeshStandardMaterial({ map: videoTexture, metalness: 0.0, roughness: 0.35, emissive: 0xffffff, emissiveMap: videoTexture, emissiveIntensity: 0.6 })
+            continue
+          }
+          const src = imageTextures[Math.floor(Math.random() * imageTextures.length)]
+          const faceW = panelSize
+          const tex = makeTextureForFace(src, faceW, faceH)
+          materials[fi] = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.0, roughness: 0.35, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6 })
+        }
       }
       const mesh = new THREE.Mesh(geom, materials)
       mesh.position.set(rx, panelSize/2, rz)
@@ -453,7 +377,8 @@ texturesReady.then(() => {
   // place camera outside the city so it spawns looking in
   // compute scene extent and use it to pick a good distance
   const length = grid * spacing + spacing
-  camera.position.set(0, 1.8, Math.max(12, Math.ceil(length * 1.3)))
+  // place camera a bit closer: use a smaller multiplier and lower minimum
+  camera.position.set(0, 1.8, Math.max(6, Math.ceil(length * 0.8)))
   camera.lookAt(0, 1.8, 0)
 
   animate()
