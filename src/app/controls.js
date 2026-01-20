@@ -5,8 +5,11 @@ export function setupControls(camera, buildingBoxes, opts = {}) {
   const speed = opts.speed || 0.35
   const playerRadius = opts.playerRadius || 0.45
   let yaw = 0
+  let pitch = 0
   const forward = new THREE.Vector3()
   const right = new THREE.Vector3()
+  const moveAxes = { x: 0, z: 0 }
+  const lookSensitivity = 1.0 // look deltas are expected in radians already
 
   function onKeyDown(e) { keys[e.key.toLowerCase()] = true }
   function onKeyUp(e) { keys[e.key.toLowerCase()] = false }
@@ -28,19 +31,37 @@ export function setupControls(camera, buildingBoxes, opts = {}) {
     let blockedZ = buildingBoxes.some(box => sphereZ.intersectsBox(box))
     if (!blockedZ) { camera.position.copy(proposedZ); return }
   }
+  function applyLookDelta(dx, dy) {
+    // dx,dy expected in radians (small values). dx rotates yaw, dy rotates pitch.
+    yaw += dx * lookSensitivity
+    pitch += dy * lookSensitivity
+    // clamp pitch to avoid flipping
+    const maxPitch = Math.PI / 2 - 0.01
+    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch))
+  }
+
+  function setMoveAxes(x, z) {
+    moveAxes.x = typeof x === 'number' ? x : 0
+    moveAxes.z = typeof z === 'number' ? z : 0
+  }
 
   return {
     update() {
       if (keys['arrowleft'] || keys['a']) yaw += 0.03
       if (keys['arrowright'] || keys['d']) yaw -= 0.03
-      camera.rotation.set(camera.rotation.x, yaw, 0)
+      // apply camera rotations from both keyboard and touch/orientation inputs
+      camera.rotation.set(pitch || camera.rotation.x, yaw, 0)
       forward.set(-Math.sin(yaw), 0, -Math.cos(yaw))
       right.set(Math.cos(yaw), 0, -Math.sin(yaw))
       const moveDelta = new THREE.Vector3()
+      // keyboard movement
       if (keys['arrowup'] || keys['w']) moveDelta.add(forward)
       if (keys['arrowdown'] || keys['s']) moveDelta.addScaledVector(forward, -1)
       if (keys['q']) moveDelta.addScaledVector(right, -1)
       if (keys['e']) moveDelta.add(right)
+      // touch two-finger movement axes
+      if (moveAxes.z) moveDelta.addScaledVector(forward, moveAxes.z)
+      if (moveAxes.x) moveDelta.addScaledVector(right, moveAxes.x)
       if (moveDelta.lengthSq() > 0) {
         moveDelta.normalize().multiplyScalar(speed)
         tryMove(moveDelta)
@@ -48,6 +69,8 @@ export function setupControls(camera, buildingBoxes, opts = {}) {
       if (camera.position.y < 1.5) camera.position.y = 1.5
       return { yaw, forward, right }
     },
+    applyLookDelta,
+    setMoveAxes,
     dispose() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)

@@ -3,6 +3,7 @@ import haikuData from '../data/data.json'
 import { loadingManager, getImagePaths, loadTextures, makeTextureForFace, createVideoTexture, loadEnvironment } from './assets.js'
 import { createFireflySystem } from './particles.js'
 import { setupControls } from './controls.js'
+import { startTouchControls } from './touchControls.js'
 import { initModels } from './models.js'
 
 export function startApp() {
@@ -269,6 +270,17 @@ export function startApp() {
   })
 
   const controls = setupControls(camera, buildingBoxes)
+
+  // start touch gesture controls on touch-capable devices
+  let _stopTouchControls = null
+  try {
+    if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+      _stopTouchControls = startTouchControls(container, {
+        onLook: (dx, dy) => { if (controls && typeof controls.applyLookDelta === 'function') controls.applyLookDelta(dx, dy) },
+        onMove: (axes) => { if (controls && typeof controls.setMoveAxes === 'function') controls.setMoveAxes(axes.x, axes.z) }
+      })
+    }
+  } catch (e) { console.warn('touch controls init failed', e) }
 
   function resize() {
     camera.aspect = window.innerWidth / window.innerHeight

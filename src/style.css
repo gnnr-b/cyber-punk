@@ -51,6 +51,9 @@ h1 {
   outline: none;
 }
 
+/* Prevent browser panning/zoom during touch gestures on the scene */
+#scene-container { touch-action: none; -ms-touch-action: none; }
+
 #ui {
   position: fixed;
   left: 12px;
