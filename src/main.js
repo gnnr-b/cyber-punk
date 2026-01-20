@@ -81,7 +81,7 @@ const texLoader = new THREE.TextureLoader()
 
 // Dynamically import all images in assets/img so adding new images is automatic.
 // Vite exposes `import.meta.glob` which returns module objects with `default` URL when eager.
-const imageModules = import.meta.glob('./assets/img/*.{png,jpg,jpeg}', { eager: true })
+const imageModules = import.meta.glob('./assets/img/*.{png,jpg,jpeg,webp}', { eager: true })
 const imagePaths = Object.values(imageModules).map(m => (m && m.default) || m).filter(Boolean)
 
 let imageTextures = []
@@ -263,7 +263,7 @@ const interactiveObjects = []
 function findHaikuForSrc(src) {
   if (!src) return null
   try {
-    // normalize to the URL basename (e.g. "0001-DEfRsdbw.png") and
+    // normalize to the URL basename (e.g. "0001-DEfRsdbw.webp") and
     // compare against haiku keys by their base name (without extension)
     const basename = (typeof src === 'string') ? String(src).split('/').pop().split('?')[0] : ''
     const nameNoExt = basename.replace(/\.[^.]*$/, '')
