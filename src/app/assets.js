@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 
 export const loadingManager = new THREE.LoadingManager()
 export const texLoader = new THREE.TextureLoader(loadingManager)
@@ -72,15 +71,44 @@ export function createVideoTexture() {
 export function loadEnvironment(renderer, scene) {
   const pmremGenerator = new THREE.PMREMGenerator(renderer)
   pmremGenerator.compileEquirectangularShader()
-  const hdrPath = new URL('../assets/background.hdr', import.meta.url).href
-  return new Promise((resolve) => {
-    new HDRLoader(loadingManager).load(hdrPath, (hdrTex) => {
-      const envMap = pmremGenerator.fromEquirectangular(hdrTex).texture
-      scene.environment = envMap
-      scene.background = envMap
-      if (hdrTex.dispose) hdrTex.dispose()
-      pmremGenerator.dispose()
-      resolve(envMap)
-    }, undefined, (err) => { console.warn('HDR load failed', err); resolve(null) })
-  })
+
+  // create an equirectangular-like gradient on a canvas and use it as background
+  const w = 2048, h = 1024
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  const grad = ctx.createLinearGradient(0, 0, 0, h)
+  grad.addColorStop(0.0, '#095291')
+  grad.addColorStop(0.45, '#2f6b8f')
+  grad.addColorStop(0.8, '#6ea0c8')
+  grad.addColorStop(1.0, '#dfeffb')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, w, h)
+
+  const canvasTex = new THREE.CanvasTexture(canvas)
+  canvasTex.encoding = THREE.sRGBEncoding
+  canvasTex.mapping = THREE.EquirectangularReflectionMapping
+  canvasTex.needsUpdate = true
+
+  // generate a PMREM environment from the canvas texture so PBR materials keep lighting
+  const envMap = pmremGenerator.fromEquirectangular(canvasTex).texture
+  scene.environment = envMap
+  scene.background = canvasTex
+
+  // ensure renderer clear color matches primary hue so change is visible
+  try {
+    renderer.setClearColor(new THREE.Color('#095291'))
+  } catch (e) {}
+
+  // increase global brightness via renderer tone mapping exposure
+  try {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.0
+  } catch (e) {
+    // ignore if renderer doesn't support tone mapping
+  }
+
+  pmremGenerator.dispose()
+  return Promise.resolve(envMap)
 }
